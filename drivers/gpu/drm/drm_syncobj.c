@@ -211,6 +211,8 @@ static void drm_syncobj_assign_null_handle(struct drm_syncobj *syncobj)
 	dma_fence_put(fence);
 }
 
+/* 5s */
+#define DRM_SYNCOBJ_WAIT_FOR_SUBMIT_TIMEOUT 5000000000
 /**
  * drm_syncobj_find_fence - lookup and reference the fence in a sync object
  * @file_private: drm file private pointer
@@ -232,6 +234,7 @@ int drm_syncobj_find_fence(struct drm_file *file_private,
 {
 	struct drm_syncobj *syncobj = drm_syncobj_find(file_private, handle);
 	struct syncobj_wait_entry wait;
+	u64 timeout = nsecs_to_jiffies64(DRM_SYNCOBJ_WAIT_FOR_SUBMIT_TIMEOUT);
 	int ret;
 
 	if (!syncobj)
@@ -263,13 +266,17 @@ int drm_syncobj_find_fence(struct drm_file *file_private,
 			ret = 0;
 			break;
 		}
+                if (timeout == 0) {
+                        ret = -ETIME;
+                        break;
+                }
 
 		if (signal_pending(current)) {
 			ret = -ERESTARTSYS;
 			break;
 		}
 
-		schedule();
+                timeout = schedule_timeout(timeout);
 	} while (1);
 
 	__set_current_state(TASK_RUNNING);
